@@ -21,7 +21,7 @@ latitud <- 13.9
 altitud <- 677
 
 ### 3. Leer datos de entrada
-datos_historicos <- read_csv(paste0(directorio_datos, "/datos_clima.csv"))
+datos_historicos <- read_csv(paste0(directorio_datos, "/datos_climaaaaa.csv"))
 
 pronostico <- read_csv(paste0(directorio_datos, "/pronostico_probabilistico.csv"))
 
