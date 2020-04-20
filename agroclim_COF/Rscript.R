@@ -1,110 +1,81 @@
 # Script Practice 4 - Pronósticos agro-climáticos estacionales.
 # Author: Rodriguez-Espinoza J. / Esquivel A.
-# Repository: https://github.com/jrodriguez88/cropmodel_managua2020
+# Repository: https://github.com/jrodriguez88/COF_2020
 # 2020
 
 ### Objetivo: 
 ### Generar pronosticos de rendimiento a partir de una prediccion climatica probabilistica.
 
 
-### Load packages
-library(tidyverse)
-library(data.table)
-library(lubridate)
+### 1. Cargar requerimientos
 
-source("https://raw.githubusercontent.com/jrodriguez88/ciat_tools/master/remuestreo_mod.R", encoding = "UTF-8")
-source("https://raw.githubusercontent.com/jrodriguez88/aquacrop-R/master/make_weather_aquacrop.R", encoding = "UTF-8")
-source("https://raw.githubusercontent.com/jrodriguez88/aquacrop-R/master/make_project_by_date.R", encoding = "UTF-8")
-source("https://raw.githubusercontent.com/jrodriguez88/aquacrop-R/master/read_outputs_aquacrop.R", encoding = "UTF-8")
-source("https://raw.githubusercontent.com/jrodriguez88/aquacrop-R/master/plot_applications.R", encoding = "UTF-8")
+source("https://raw.githubusercontent.com/jrodriguez88/aquacrop-R/master/agroclim_forecaster.R", encoding = "UTF-8")
+load_agroclim_requeriments()
+inpack(c("tidyverse", "data.table", "lubridate", "sirad", "naniar", "jsonlite" ,"soiltexture"))
+crear_directorios_COF()
 
 
-### 2 Definir directorio de trabajo y resultados, y zona de estudio
-localidad <- "jalapa"
+### 2. Definir zona de estudio
+localidad <- "SitioA"
 latitud <- 13.9
 altitud <- 677
 
-directorio <- paste0(getwd(), "/practica_4/") 
-directorio_datos <- paste0(directorio, "/data/")
-directorio_resultados <- paste0(directorio, "/resultados/")
-aquacrop_files <- paste0(directorio, "/aquacrop_files/")
-plugin_path <- paste0(directorio, "/plugin/")
-
-
-## Read Data
-datos_historicos <- read_csv(paste0(directorio_datos, "/datos_clima.csv")) %>% 
-  mutate(day = day(date), 
-         month = month(date),
-         year = year(date)) %>%
-  rename(prec = rain) %>%
-  dplyr::select(day:year, prec, tmax, tmin)
+### 3. Leer datos de entrada
+datos_historicos <- read_csv(paste0(directorio_datos, "/datos_clima.csv"))
 
 pronostico <- read_csv(paste0(directorio_datos, "/pronostico_probabilistico.csv"))
 
 
-## Explore observed data and seasonal probabilistic forecast
+### 4. Grafique los datos observados y las probabilidades
 
 plot_prob_forecast(pronostico)
 plot_weather_series(datos_historicos, localidad)
 
-## Make statistical resampling over historic data
+### 5. Realice el remuestreo estadistico sobre la serie historica
 data_resampling <- resampling(datos_historicos, pronostico, 2020)
 
 
-## Save escenaries
+### Opcional : Guarde los escenarios
 #dir.create(directorio_resultados)
 #function_to_save(localidad, data_resampling, directorio_resultados)
 
 
-## Plot Seasonal forecast escenaries
+### 6. Grafique los escenarios de remuestreo
 plot_resampling(data_resampling, datos_historicos, localidad, stat = "median")
 
 
-## Convert to Aquacrop
-to_aquacrop <- data_resampling$data[[1]] %>%
-  mutate(data = map(data, ~.x %>% 
-                      rename(rain = prec) %>% 
-                      mutate(year = 2020, 
-                             date=make_date(year, month, day))%>%
-                      select(-c(year, month, day))))
-  
-#dir.create(aquacrop_files)
-walk2(paste0(localidad, to_aquacrop$id), to_aquacrop$data, 
-     ~make_weather_aquacrop(aquacrop_files, .x, .y, latitud, altitud))
+### 7. Configurar datos para formatos AquaCrop
+
+cultivar <- list.files(aquacrop_files, pattern = ".CRO") %>% str_remove(".CRO")
+suelos <- list.files(aquacrop_files, pattern = ".SOL")
+star_sow <- c(min(data_resampling$data[[1]]$data[[1]]$month),1)   #c(month, day)
+end_sow <- c((star_sow[1]+1),3)
+
+to_aquacrop1 <- map(cultivar, ~from_resampling_to_aquacrop(data_resampling, .x, "FrancoArcilloso")) %>% bind_rows()
+to_aquacrop2 <- map(cultivar, ~from_resampling_to_aquacrop(data_resampling, .x, "FrancoArenoso")) %>% bind_rows()
+to_aquacrop <- bind_rows(to_aquacrop1, to_aquacrop2)
 
 
-star_sow <- c(4,1)   #c(month, day)
-end_sow <- c(5,3)  
+
+### 8. Exportar datos a formato AquaCrop\
+
 unlink(paste0(plugin_path, "/OUTP/*"))
 unlink(paste0(plugin_path, "/LIST/*"))
 
-to_aquacrop %>% sample_n(.,  size = 25) %>%
-  mutate(clim_data = map(data, ~.x %>% 
-                      mutate(HUH = ((tmax + tmin)/2) - tbase))) %>%
-  mutate(sowing_dates = map(clim_data, ~sow_date_cal(star_sow, end_sow, .x, by = 5)),
-         crop = "DryBeanGDD",
-         id2 = "id2", 
-         id_name = paste0(localidad, id)) %>% select(-data, -id) %>%
-  #data_to_project %>%# slice(1:3) %>% +
-  mutate(to_project = pmap(list(x = id_name, 
-                                y = sowing_dates,
-                                z = clim_data, 
-                                  k = crop, 
-                                m = id2,
-                                n = plugin_path),
-                           function(x,y,z,k,m, n) list(id_name = x, 
-                                                       sowing_dates = y, 
-                                                       clim_data = z,
-                                                       cultivar = k,
-                                                       plugin_path = n,
-                                                       id2 = m))) %>% pull(to_project) %>%
+
+walk2(paste0(localidad, to_aquacrop$id), to_aquacrop$data,
+      ~make_weather_aquacrop(aquacrop_files, .x, .y, latitud, altitud))
+
+to_aquacrop %>% pull(to_project) %>% 
   walk(~make_project_by_date(.x$id_name, .x$sowing_dates, .x$cultivar, 130, .x$clim_data, aquacrop_files, .x$plugin_path, .x$id2))
-  
-system("practica_4/plugin/ACsaV60.exe")
+
+
+### 9. Ejecutar las simulaciones de AquaCrop
+system("agroclim_COF/plugin/ACsaV60.exe")
 
 
 
-### Lectura de datos 
+### 10. Lectura de resultados
 path_op <- paste0(plugin_path, "/OUTP/")
 season_files <- list.files(path_op, pattern = "season") 
 
@@ -112,6 +83,10 @@ file_str <- c("clima", "cultivar", "soil", "crop_sys")
 season_data <- map(.x = season_files, ~read_aquacrop_season(.x, path_op)) %>%
   bind_rows() 
 
+
+### 11. Graficar resultados finales
 plot_agroclim_forecast(season_data, localidad, file_str, "qq/mz")
 plot_agroclim_hidric(season_data, localidad, file_str)
-  
+
+
+## Felicitaciones, ha terminado su primer pronostico agroclimatico
