@@ -1,4 +1,4 @@
-# Script Practice 4 - Pronósticos agro-climáticos estacionales.
+# Script app - Pronósticos agro-climáticos estacionales.
 # Author: Rodriguez-Espinoza J. / Esquivel A.
 # Repository: https://github.com/jrodriguez88/COF_2020
 # 2020
