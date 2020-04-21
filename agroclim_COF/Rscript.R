@@ -59,20 +59,21 @@ to_aquacrop <- bind_rows(to_aquacrop1, to_aquacrop2)
 
 ### 8. Exportar datos a formato AquaCrop\
 
+#Borra contenido de carpetas
 unlink(paste0(plugin_path, "/OUTP/*"))
 unlink(paste0(plugin_path, "/LIST/*"))
 
-
+#Exportar datos clmaticos
 walk2(paste0(localidad, to_aquacrop$id), to_aquacrop$data,
       ~make_weather_aquacrop(aquacrop_files, .x, .y, latitud, altitud))
 
+#Exportar proyectos
 to_aquacrop %>% pull(to_project) %>% 
   walk(~make_project_by_date(.x$id_name, .x$sowing_dates, .x$cultivar, 130, .x$clim_data, aquacrop_files, .x$plugin_path, .x$id2))
 
 
 ### 9. Ejecutar las simulaciones de AquaCrop
 system("agroclim_COF/plugin/ACsaV60.exe")
-
 
 
 ### 10. Lectura de resultados
